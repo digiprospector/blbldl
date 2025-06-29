@@ -1,0 +1,5 @@
+fake-useragent
+user-agents
+requests
+lxml
+beautifulsoup4
