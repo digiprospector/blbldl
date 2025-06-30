@@ -129,6 +129,15 @@ def get_media_info(bv_json):
 
 
 link = sys.argv[1]
+BVID = None
+if "www.bilibili.com" in link:
+    BVID = link.split("/")[-1].split("?")[0]
+elif link.startswith("BV"):
+    BVID = link
+
+if BVID:
+    link = f"https://www.bilibili.com/video/{BVID}"
+print(link)
 bv_id = extract_bv_id(link)
 
 max_attempts = 10
