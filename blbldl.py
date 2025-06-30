@@ -187,5 +187,12 @@ if media_info_json:
         for chunk in r.iter_content(chunk_size=8192):
             if chunk:
                 f.write(chunk)
+    audio_json = {
+                  "title":media_info_json1.get('videoData').get('title'),
+                  "owner":media_info_json1.get('videoData').get('owner').get('name'),
+                  "datetime":media_info_json1.get('videoData').get('ctime'),
+                  "bvid":BVID}
+    with open("audio.json", 'w', encoding='utf-8') as f:
+        json.dump(audio_json, f, ensure_ascii=False)
 else:
     print("Failed to retrieve media information after multiple attempts.")
