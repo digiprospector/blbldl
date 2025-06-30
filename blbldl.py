@@ -137,7 +137,6 @@ elif link.startswith("BV"):
 
 if BVID:
     link = f"https://www.bilibili.com/video/{BVID}"
-print(link)
 bv_id = extract_bv_id(link)
 
 max_attempts = 10
