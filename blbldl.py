@@ -127,72 +127,75 @@ def get_media_info(bv_json):
         "is_flac": False
     }
 
+def main(link):
+    BVID = None
+    if "www.bilibili.com" in link:
+        BVID = link.split("/")[-1].split("?")[0]
+    elif link.startswith("BV"):
+        BVID = link
 
-link = sys.argv[1]
-BVID = None
-if "www.bilibili.com" in link:
-    BVID = link.split("/")[-1].split("?")[0]
-elif link.startswith("BV"):
-    BVID = link
+    if BVID:
+        link = f"https://www.bilibili.com/video/{BVID}"
+    bv_id = extract_bv_id(link)
 
-if BVID:
-    link = f"https://www.bilibili.com/video/{BVID}"
-bv_id = extract_bv_id(link)
+    max_attempts = 10
+    delay = 5
+    media_info_json = None
+    media_info_json1 = None
 
-max_attempts = 10
-delay = 5
-media_info_json = None
-media_info_json1 = None
+    for attempt in range(max_attempts):
+        s = requests.Session()
+        headers = {
+            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "accept-language": "zh-CN,zh;q=0.9,ja;q=0.8,en;q=0.7",
+            "cache-control": "max-age=0",
+            "priority": "u=0, i",
+            "referer": "https://www.bilibili.com/?spm_id_from=333.788.0.0",
+            "sec-ch-ua": "\"Chromium\";v=\"136\", \"Google Chrome\";v=\"136\", \"Not.A/Brand\";v=\"99\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"Windows\"",  # Default, will be overwritten if needed
+            "sec-fetch-dest": "document",
+            "sec-fetch-mode": "navigate",
+            "sec-fetch-site": "same-origin",
+            "sec-fetch-user": "?1",
+            "upgrade-insecure-requests": "1",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+            }
+        # Update headers with potentially more accurate UA and platform info
+        ua = UserAgent().random
+        headers.update({
+            "user-agent": ua,
+            "sec-ch-ua": get_sec_ch_ua(ua),
+            "sec-ch-ua-platform": get_platform(ua),
+            "sec-ch-ua-mobile": get_sec_ch_ua_mobile(ua),
+        })
+        s.headers = headers
+        r = s.get(url=link)
+        media_info_json, media_info_json1 = parse_bv_info(r.text)
 
-for attempt in range(max_attempts):
-    s = requests.Session()
-    headers = {
-        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-        "accept-language": "zh-CN,zh;q=0.9,ja;q=0.8,en;q=0.7",
-        "cache-control": "max-age=0",
-        "priority": "u=0, i",
-        "referer": "https://www.bilibili.com/?spm_id_from=333.788.0.0",
-        "sec-ch-ua": "\"Chromium\";v=\"136\", \"Google Chrome\";v=\"136\", \"Not.A/Brand\";v=\"99\"",
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": "\"Windows\"",  # Default, will be overwritten if needed
-        "sec-fetch-dest": "document",
-        "sec-fetch-mode": "navigate",
-        "sec-fetch-site": "same-origin",
-        "sec-fetch-user": "?1",
-        "upgrade-insecure-requests": "1",
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
-        }
-    # Update headers with potentially more accurate UA and platform info
-    ua = UserAgent().random
-    headers.update({
-        "user-agent": ua,
-        "sec-ch-ua": get_sec_ch_ua(ua),
-        "sec-ch-ua-platform": get_platform(ua),
-        "sec-ch-ua-mobile": get_sec_ch_ua_mobile(ua),
-    })
-    s.headers = headers
-    r = s.get(url=link)
-    media_info_json, media_info_json1 = parse_bv_info(r.text)
+        if media_info_json:
+            break
+        else:
+            print(f"Attempt {attempt + 1} failed. Retrying in {delay} seconds...")
+            time.sleep(delay)
 
     if media_info_json:
-        break
+        audio_info = get_media_info(media_info_json)
+        r = s.get(audio_info.get("link"), stream=True)
+        with open("audio.mp3", 'ab') as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+        audio_json = {
+                    "title":media_info_json1.get('videoData').get('title'),
+                    "owner":media_info_json1.get('videoData').get('owner').get('name'),
+                    "datetime":media_info_json1.get('videoData').get('ctime'),
+                    "bvid":BVID}
+        with open("audio.json", 'w', encoding='utf-8') as f:
+            json.dump(audio_json, f, ensure_ascii=False)
     else:
-        print(f"Attempt {attempt + 1} failed. Retrying in {delay} seconds...")
-        time.sleep(delay)
+        print("Failed to retrieve media information after multiple attempts.")
 
-if media_info_json:
-    audio_info = get_media_info(media_info_json)
-    r = s.get(audio_info.get("link"), stream=True)
-    with open("audio.mp3", 'ab') as f:
-        for chunk in r.iter_content(chunk_size=8192):
-            if chunk:
-                f.write(chunk)
-    audio_json = {
-                  "title":media_info_json1.get('videoData').get('title'),
-                  "owner":media_info_json1.get('videoData').get('owner').get('name'),
-                  "datetime":media_info_json1.get('videoData').get('ctime'),
-                  "bvid":BVID}
-    with open("audio.json", 'w', encoding='utf-8') as f:
-        json.dump(audio_json, f, ensure_ascii=False)
-else:
-    print("Failed to retrieve media information after multiple attempts.")
+if __name__ == "__main__":
+    link = sys.argv[1]
+    main(link)
