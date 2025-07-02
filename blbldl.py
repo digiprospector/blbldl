@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 import json
 import time
 import os
+from pathlib import Path
 
 def get_sec_ch_ua_mobile(ua):
     user_agent = parse(ua)
@@ -128,7 +129,7 @@ def get_media_info(bv_json):
         "is_flac": False
     }
 
-def main(link):
+def main(link, output_dir):
     BVID = None
     if "www.bilibili.com" in link:
         BVID = link.split("/")[-1].split("?")[0]
@@ -183,7 +184,7 @@ def main(link):
     if media_info_json:
         audio_info = get_media_info(media_info_json)
         audio_link = audio_info.get("link")
-        output_filename = "audio.mp3"
+        output_filename = output_dir / "audio.mp3"
         
         max_download_attempts = 5
         for attempt in range(max_download_attempts):
@@ -230,11 +231,11 @@ def main(link):
                     "owner":media_info_json1.get('videoData').get('owner').get('name'),
                     "datetime":media_info_json1.get('videoData').get('ctime'),
                     "bvid":BVID}
-        with open("audio.json", 'w', encoding='utf-8') as f:
+        with open(output_filename.with_suffix('.json'), 'w', encoding='utf-8') as f:
             json.dump(audio_json, f, ensure_ascii=False)
     else:
         print("Failed to retrieve media information after multiple attempts.")
 
 if __name__ == "__main__":
     link = sys.argv[1]
-    main(link)
+    main(link, Path())
