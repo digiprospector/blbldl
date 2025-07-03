@@ -131,6 +131,7 @@ def get_media_info(bv_json):
 
 def main(link, output_dir):
     BVID = None
+    link = link.rstrip('/')
     if "www.bilibili.com" in link:
         BVID = link.split("/")[-1].split("?")[0]
     elif link.startswith("BV"):
