@@ -182,34 +182,34 @@ def main(link, output_dir):
             print(f"Attempt {attempt + 1} failed. Retrying in {delay} seconds...")
             time.sleep(delay)
 
-    if media_info_json:
-        audio_info = get_media_info(media_info_json)
-        audio_link = audio_info.get("link")
-        output_filename = output_dir / "audio.mp3"
-        
-        try:
-            print(f"开始下载音频...")
-            r = s.get(audio_link, stream=True, timeout=60)
-            r.raise_for_status()
-
-            with open(output_filename, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
+        if media_info_json:
+            audio_info = get_media_info(media_info_json)
+            audio_link = audio_info.get("link")
+            output_filename = output_dir / "audio.mp3"
             
-            print("音频下载成功。")
-        except (requests.exceptions.RequestException, ConnectionError) as e:
-            print(f"下载音频失败: {e}")
-            return  # 下载失败，退出函数
+            try:
+                print(f"开始下载音频...")
+                r = s.get(audio_link, stream=True, timeout=60)
+                r.raise_for_status()
 
-        audio_json = {
-                    "title":media_info_json1.get('videoData').get('title'),
-                    "owner":media_info_json1.get('videoData').get('owner').get('name'),
-                    "datetime":media_info_json1.get('videoData').get('ctime'),
-                    "bvid":BVID}
-        with open(output_filename.with_suffix('.json'), 'w', encoding='utf-8') as f:
-            json.dump(audio_json, f, ensure_ascii=False)
-    else:
-        print("Failed to retrieve media information after multiple attempts.")
+                with open(output_filename, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                
+                print("音频下载成功。")
+            except (requests.exceptions.RequestException, ConnectionError) as e:
+                print(f"下载音频失败: {e}")
+                return  # 下载失败，退出函数
+
+            audio_json = {
+                        "title":media_info_json1.get('videoData').get('title'),
+                        "owner":media_info_json1.get('videoData').get('owner').get('name'),
+                        "datetime":media_info_json1.get('videoData').get('ctime'),
+                        "bvid":BVID}
+            with open(output_filename.with_suffix('.json'), 'w', encoding='utf-8') as f:
+                json.dump(audio_json, f, ensure_ascii=False)
+        else:
+            print("Failed to retrieve media information after multiple attempts.")
 
 if __name__ == "__main__":
     link = sys.argv[1]
