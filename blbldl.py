@@ -38,15 +38,6 @@ def get_platform(user_agent):
     else:
         return "Unknown"
 
-def extract_bv_id(link):
-    try:
-        decoded_url = unquote(link)
-        pattern = r"(?:/video/|b23\.tv/)(BV[0-9A-Za-z]{10})"
-        match = re.search(pattern, decoded_url)
-        return match.group(1) if match else None
-    except (AttributeError, TypeError):
-        return None
-
 def parse_bv_info(text):
     data = None
     data1 = None
@@ -80,6 +71,7 @@ def parse_bv_info(text):
         if data and data1:  # Both JSONs found, no need to continue
             return data, data1
     return data, data1
+
 def find_highest_quality_file_index(video_list):
     if not video_list:
         return -1
@@ -102,6 +94,7 @@ def find_highest_quality_file_index(video_list):
                         current_width == highest_width and current_height == highest_height and current_frame_rate == highest_frame_rate and current_bandwidth > highest_bandwidth)):
             highest_index = index
     return highest_index if video_list else -1
+
 def get_media_info(bv_json):
     """从 BV JSON 中获取媒体（音频/视频）信息"""
     audio_list=[]
@@ -139,7 +132,6 @@ def main(link, output_dir):
 
     if BVID:
         link = f"https://www.bilibili.com/video/{BVID}"
-    bv_id = extract_bv_id(link)
 
     max_attempts = 10
     delay = 5
@@ -176,13 +168,11 @@ def main(link, output_dir):
         r = s.get(url=link)
         media_info_json, media_info_json1 = parse_bv_info(r.text)
 
-        if media_info_json:
-            break
-        else:
-            print(f"Attempt {attempt + 1} failed. Retrying in {delay} seconds...")
+        if not media_info_json:
+            print(f"第 {attempt + 1} 次尝试失败。将在 {delay} 秒后重试...")
             time.sleep(delay)
-
-        if media_info_json:
+            continue
+        else:
             audio_info = get_media_info(media_info_json)
             audio_link = audio_info.get("link")
             output_filename = output_dir / "audio.mp3"
@@ -197,19 +187,17 @@ def main(link, output_dir):
                         f.write(chunk)
                 
                 print("音频下载成功。")
+                audio_json = {
+                            "title":media_info_json1.get('videoData').get('title'),
+                            "owner":media_info_json1.get('videoData').get('owner').get('name'),
+                            "datetime":media_info_json1.get('videoData').get('ctime'),
+                            "bvid":BVID}
+                with open(output_filename.with_suffix('.json'), 'w', encoding='utf-8') as f:
+                    json.dump(audio_json, f, ensure_ascii=False)
+                break  # 下载成功，跳出循环
             except (requests.exceptions.RequestException, ConnectionError) as e:
                 print(f"下载音频失败: {e}")
-                return  # 下载失败，退出函数
-
-            audio_json = {
-                        "title":media_info_json1.get('videoData').get('title'),
-                        "owner":media_info_json1.get('videoData').get('owner').get('name'),
-                        "datetime":media_info_json1.get('videoData').get('ctime'),
-                        "bvid":BVID}
-            with open(output_filename.with_suffix('.json'), 'w', encoding='utf-8') as f:
-                json.dump(audio_json, f, ensure_ascii=False)
-        else:
-            print("Failed to retrieve media information after multiple attempts.")
+                continue
 
 if __name__ == "__main__":
     link = sys.argv[1]
