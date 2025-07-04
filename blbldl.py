@@ -187,45 +187,19 @@ def main(link, output_dir):
         audio_link = audio_info.get("link")
         output_filename = output_dir / "audio.mp3"
         
-        max_download_attempts = 5
-        for attempt in range(max_download_attempts):
-            try:
-                downloaded_size = 0
-                if os.path.exists(output_filename):
-                    downloaded_size = os.path.getsize(output_filename)
+        try:
+            print(f"开始下载音频...")
+            r = s.get(audio_link, stream=True, timeout=60)
+            r.raise_for_status()
 
-                resume_headers = s.headers.copy()
-                if downloaded_size > 0:
-                    resume_headers['Range'] = f'bytes={downloaded_size}-'
-                
-                print(f"开始下载音频... (尝试 {attempt + 1}/{max_download_attempts})")
-                if downloaded_size > 0:
-                    print(f"从 {downloaded_size} 字节处继续下载。")
-
-                r = s.get(audio_link, stream=True, headers=resume_headers, timeout=60)
-                
-                file_mode = 'ab'
-                if downloaded_size > 0 and r.status_code != 206:
-                    print("警告: 服务器不支持断点续传，将重新开始下载。")
-                    file_mode = 'wb' 
-                
-                r.raise_for_status()
-
-                with open(output_filename, file_mode) as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                
-                print("音频下载成功。")
-                break
-            except (requests.exceptions.RequestException, ConnectionError) as e:
-                print(f"下载尝试 {attempt + 1} 失败: {e}")
-                if attempt < max_download_attempts - 1:
-                    sleep_time = 5 * (attempt + 1)
-                    print(f"将在 {sleep_time} 秒后重试...")
-                    time.sleep(sleep_time)
-                else:
-                    print("多次尝试后下载音频失败。")
-                    return # 如果下载最终失败，则退出函数
+            with open(output_filename, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            
+            print("音频下载成功。")
+        except (requests.exceptions.RequestException, ConnectionError) as e:
+            print(f"下载音频失败: {e}")
+            return  # 下载失败，退出函数
 
         audio_json = {
                     "title":media_info_json1.get('videoData').get('title'),
