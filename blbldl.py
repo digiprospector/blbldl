@@ -204,7 +204,6 @@ def get_media_info(bv_json: Dict[str, Any]) -> Dict[str, Any]:
                 "is_flac": True
             }
     except Exception as e:
-        logger.warning(f"获取FLAC音频时出错: {str(e)}")
         # 如果没有 FLAC，回退到普通音频
         audio_list = bv_json.get("data", {}).get("dash", {}).get("audio", [])
         
@@ -234,7 +233,7 @@ def get_media_info(bv_json: Dict[str, Any]) -> Dict[str, Any]:
         "is_flac": False
     }
 
-def main(link: str, output_dir: Path, max_duration: Optional[int] = None) -> str:
+def main(link: str, output_dir: Path, max_duration: Optional[int]) -> str:
     """下载B站视频的音频
     
     Args:
@@ -325,7 +324,7 @@ def main(link: str, output_dir: Path, max_duration: Optional[int] = None) -> str
                 time.sleep(delay)
                 continue
             
-            if media_info_json1.get("videoData").get("duration") and media_info_json1.get("videoData").get("duration") > max_duration:
+            if max_duration and media_info_json1.get("videoData").get("duration") and media_info_json1.get("videoData").get("duration") > max_duration:
                 logger.warning(f"视频时长超过 {max_duration} 秒，无法下载")
                 return "duration"
                 
@@ -387,7 +386,7 @@ if __name__ == "__main__":
     parser.add_argument("link", help="B站视频链接或BV号")
     parser.add_argument("-o", "--output", type=str, default=".", help="输出目录 (默认: 当前目录)")
     parser.add_argument("-d", "--debug", action="store_true", help="启用调试日志")
-    parser.add_argument("-m", "--max-duration", type=int, help="最大下载时长（秒）")
+    parser.add_argument("-m", "--max-duration", type=int, default=0, help="最大下载时长（秒）")
     
     args = parser.parse_args()
     
@@ -407,6 +406,9 @@ if __name__ == "__main__":
         elif result == 'excluded':
             logger.error("该视频为充电专属，无法下载")
             sys.exit(2)
+        elif result == 'duration':
+            logger.error("该视频超出长度，不下载")
+            sys.exit(3)
         else:
             logger.error("下载失败")
             sys.exit(1)
