@@ -362,6 +362,15 @@ def main(link: str, output_dir: Path, max_duration: Optional[int]) -> str:
                         bar.update(len(chunk))
             
             logger.info("音频下载成功")
+
+            audio_json = {
+                        "title":media_info_json1.get('videoData').get('title'),
+                        "owner":media_info_json1.get('videoData').get('owner').get('name'),
+                        "datetime":media_info_json1.get('videoData').get('ctime'),
+                        "bvid":BVID}
+            with open(output_filename.with_suffix('.json'), 'w', encoding='utf-8') as f:
+                json.dump(audio_json, f, ensure_ascii=False)                
+            logger.info("生成音频json成功")
                 
             # 下载成功，跳出循环
             break
