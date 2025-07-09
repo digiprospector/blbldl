@@ -306,6 +306,12 @@ def fetch_video_info(link, max_attempts=10, delay=5):
             
             # 解析视频信息
             media_info_link, media_info_meta = parse_bv_info(r.text)
+            '''
+            with open("media_info_link.json", 'w', encoding='utf-8') as f:
+                json.dump(media_info_link, f, ensure_ascii=False, indent=2)
+            with open("media_info_meta.json", 'w', encoding='utf-8') as f:
+                json.dump(media_info_meta, f, ensure_ascii=False, indent=2)
+            '''
             
             # 检查是否为充电专属视频
             if (media_info_meta and 
@@ -314,6 +320,24 @@ def fetch_video_info(link, max_attempts=10, delay=5):
                 media_info_meta.get('video').get('viewInfo').get('is_upower_exclusive')):
                 logger.warning("视频为充电专属，跳过下载")
                 return 'excluded', "", None
+
+            if (media_info_meta and
+                media_info_meta.get('error') and
+                media_info_meta.get('error').get('trueCode')):
+                if media_info_meta.get('error').get('trueCode') == -400:
+                    msg = '请求错误'
+                elif media_info_meta.get('error').get('trueCode') == -403:
+                    msg = '请求错误'
+                elif media_info_meta.get('error').get('trueCode') == -404:
+                    msg = '无视频'
+                elif media_info_meta.get('error').get('trueCode') == 62002:
+                    msg = '稿件不可见'
+                elif media_info_meta.get('error').get('trueCode') == 62004:
+                    msg = '稿件审核中'
+                elif media_info_meta.get('error').get('trueCode') == 62012:
+                    msg = '仅UP主自己可见'
+                logger.warning(f"视频出错: {msg}")
+                return 'error', '', None
 
             # 检查是否获取到视频信息
             if media_info_link:
@@ -501,6 +525,9 @@ if __name__ == "__main__":
         elif result == 'excluded':
             logger.error("该视频为充电专属，无法下载")
             sys.exit(2)
+        elif result == 'error':
+            logger.error("该视频无法下载")
+            sys.exit(3)
         else:
             logger.error("下载失败")
             sys.exit(1)
