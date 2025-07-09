@@ -233,7 +233,22 @@ def get_media_info(bv_json: Dict[str, Any]) -> Dict[str, Any]:
         "is_flac": False
     }
 
-def main(link: str, output_dir: Path, max_duration: int, dry_run: bool = False) -> (str, int):
+def extract_bvid(url_or_bvid: str) -> Optional[str]:
+    """从URL或字符串中解析B站视频的BV号。
+
+    Args:
+        url_or_bvid: B站视频链接或BV号。
+
+    Returns:
+        如果成功解析，返回BV号字符串；否则返回None。
+    """
+    # 正则表达式匹配BV号 (BV + 10个字母数字)
+    match = re.search(r'(BV[a-zA-Z0-9]{10})', url_or_bvid)
+    if match:
+        return match.group(1)
+    return None
+
+def main(link: str, output_dir: Path, max_duration: int, dry_run: bool = False) -> tuple[str, int]:
     """下载B站视频的音频
     
     Args:
@@ -246,19 +261,15 @@ def main(link: str, output_dir: Path, max_duration: int, dry_run: bool = False) 
     """
     # 确保输出目录存在
     output_dir.mkdir(parents=True, exist_ok=True)
-    # 解析BV号
-    BVID = None
-    link = link.rstrip('/')
-    if "www.bilibili.com" in link:
-        BVID = link.split("/")[-1].split("?")[0]
-    elif link.startswith("BV"):
-        BVID = link
 
-    if BVID:
-        link = f"https://www.bilibili.com/video/{BVID}"
-        logger.info(f"解析到BV号: {BVID}")
-    else:
-        logger.warning("未能解析到有效的BV号")
+    # 解析BV号
+    bvid = extract_bvid(link)
+    if not bvid:
+        logger.error(f"未能从 '{link}' 中解析到有效的BV号")
+        return 'failed', 0
+
+    link = f"https://www.bilibili.com/video/{bvid}"
+    logger.info(f"解析到BV号: {bvid}, 构造请求链接: {link}")
 
     max_attempts = 10
     delay = 5
@@ -369,7 +380,7 @@ def main(link: str, output_dir: Path, max_duration: int, dry_run: bool = False) 
                         "title":media_info_json1.get('videoData').get('title'),
                         "owner":media_info_json1.get('videoData').get('owner').get('name'),
                         "datetime":media_info_json1.get('videoData').get('ctime'),
-                        "bvid":BVID}
+                        "bvid":bvid}
             with open(output_filename.with_suffix('.json'), 'w', encoding='utf-8') as f:
                 json.dump(audio_json, f, ensure_ascii=False)                
             logger.info("生成音频json成功")
