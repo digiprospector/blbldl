@@ -248,33 +248,22 @@ def extract_bvid(url_or_bvid: str) -> Optional[str]:
         return match.group(1)
     return None
 
-def main(link: str, output_dir: Path, max_duration: int, dry_run: bool = False) -> tuple[str, int]:
-    """下载B站视频的音频
+def fetch_video_info(link, max_attempts=10, delay=5):
+    """获取视频信息，包括媒体文件链接和格式。    
+    如果请求失败，将重试最多 max_attempts 次，每次重试之间等待 delay 秒。
     
     Args:
-        link: B站视频链接或BV号
-        output_dir: 输出目录
-        max_duration: 最大下载时长（秒），可选
-        
+        link: 视频链接。
+        max_attempts: 最大重试次数。
+        delay: 重试之间的等待时间（秒）。
+    
     Returns:
-        状态码: 'ok' 表示成功，'excluded' 表示视频不可下载
+        如果请求成功，返回包含媒体文件链接和格式的字典；否则返回None。
     """
-    # 确保输出目录存在
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # 解析BV号
-    bvid = extract_bvid(link)
-    if not bvid:
-        logger.error(f"未能从 '{link}' 中解析到有效的BV号")
-        return 'failed', 0
-
-    link = f"https://www.bilibili.com/video/{bvid}"
-    logger.info(f"解析到BV号: {bvid}, 构造请求链接: {link}")
-
-    max_attempts = 10
-    delay = 5
-    media_info_json = None
-    media_info_json1 = None
+    
+    logger.info(f"正在获取视频信息: {link}")
+    media_info_link = None
+    media_info_meta = None
 
     for attempt in range(max_attempts):
         logger.info(f"尝试获取视频信息 (第 {attempt + 1}/{max_attempts} 次)")
@@ -299,17 +288,14 @@ def main(link: str, output_dir: Path, max_duration: int, dry_run: bool = False) 
         }
         
         # 使用随机用户代理
-        try:
-            ua = UserAgent().random
-            headers.update({
-                "user-agent": ua,
-                "sec-ch-ua": get_sec_ch_ua(ua),
-                "sec-ch-ua-platform": f"\"{get_platform(ua)}\"",
-                "sec-ch-ua-mobile": get_sec_ch_ua_mobile(ua),
-            })
-            logger.debug(f"使用随机用户代理: {ua}")
-        except Exception as e:
-            logger.warning(f"生成随机用户代理失败: {str(e)}")
+        ua = UserAgent().random
+        headers.update({
+            "user-agent": ua,
+            "sec-ch-ua": get_sec_ch_ua(ua),
+            "sec-ch-ua-platform": f"\"{get_platform(ua)}\"",
+            "sec-ch-ua-mobile": get_sec_ch_ua_mobile(ua),
+        })
+        logger.debug(f"使用随机用户代理: {ua}")
             
         s.headers = headers
         
@@ -319,48 +305,54 @@ def main(link: str, output_dir: Path, max_duration: int, dry_run: bool = False) 
             r.raise_for_status()
             
             # 解析视频信息
-            media_info_json, media_info_json1 = parse_bv_info(r.text)
+            media_info_link, media_info_meta = parse_bv_info(r.text)
             
-            # 检查是否获取到视频信息
-            if not media_info_json:
-                # 检查是否为充电专属视频
-                if (media_info_json1 and 
-                    media_info_json1.get('video') and 
-                    media_info_json1.get('video').get('viewInfo') and 
-                    media_info_json1.get('video').get('viewInfo').get('is_upower_exclusive')):
-                    return 'excluded'
-                    
-                logger.warning(f"第 {attempt + 1} 次尝试失败，未获取到媒体信息")
-                time.sleep(delay)
-                continue
-            
-            if dry_run:
-                return "ok", media_info_json1.get("videoData").get("duration")
+            # 检查是否为充电专属视频
+            if (media_info_meta and 
+                media_info_meta.get('video') and 
+                media_info_meta.get('video').get('viewInfo') and 
+                media_info_meta.get('video').get('viewInfo').get('is_upower_exclusive')):
+                logger.warning("视频为充电专属，跳过下载")
+                return 'excluded', "", None
 
-            if max_duration and media_info_json1.get("videoData").get("duration") and media_info_json1.get("videoData").get("duration") > max_duration:
-                logger.warning(f"视频时长超过 {max_duration} 秒，无法下载")
-                return "duration"
-                
-            # 获取音频信息
-            audio_info = get_media_info(media_info_json)
-            audio_link = audio_info.get("link")
+            # 检查是否获取到视频信息
+            if media_info_link:
+                logger.info(f"成功获取视频信息 (第 {attempt + 1} 次尝试)")
+                audio_info = get_media_info(media_info_link)
+                audio_link = audio_info.get("link")
+                audio_json = {
+                    "title":media_info_meta.get('videoData').get('title'),
+                    "owner":media_info_meta.get('videoData').get('owner').get('name'),
+                    "datetime":media_info_meta.get('videoData').get('ctime'),
+                    "bvid":bvid,
+                    "duration":media_info_meta.get("videoData").get("duration")}
+
+                return "ok", audio_link, audio_json
+                                
+            logger.warning(f"第 {attempt + 1} 次尝试失败，未获取到媒体信息")
+            time.sleep(delay)
             
-            if not audio_link:
-                logger.error("未获取到有效的音频链接")
-                time.sleep(delay)
-                continue
-                
-            # 设置输出文件名
-            output_filename = output_dir / "audio.mp3"
-            
-            # 下载音频
-            logger.info(f"开始下载音频: {audio_info.get('audio_format', 'unknown')} 格式")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"请求失败: {e}")
+            time.sleep(delay)
+    
+    logger.error(f"所有 {max_attempts} 次尝试均失败，无法获取视频信息")
+    return "failed", "", None
+
+def download_audio(audio_link, output_filename: Path, max_attempts=10, delay=5) -> str:
+    for attempt in range(max_attempts):
+        try:
+            logger.info(f"开始下载音频: {audio_link}")
+
             r = s.get(audio_link, stream=True, timeout=60)
             r.raise_for_status()
             
             # 获取文件大小用于进度条
             total_size = int(r.headers.get('content-length', 0))
             
+            # 确保输出目录存在
+            output_filename.parent.mkdir(parents=True, exist_ok=True)
+    
             # 使用tqdm显示下载进度
             with open(output_filename, 'wb') as f, tqdm(
                 desc="下载音频",
@@ -375,19 +367,6 @@ def main(link: str, output_dir: Path, max_duration: int, dry_run: bool = False) 
                         bar.update(len(chunk))
             
             logger.info("音频下载成功")
-
-            audio_json = {
-                        "title":media_info_json1.get('videoData').get('title'),
-                        "owner":media_info_json1.get('videoData').get('owner').get('name'),
-                        "datetime":media_info_json1.get('videoData').get('ctime'),
-                        "bvid":bvid}
-            with open(output_filename.with_suffix('.json'), 'w', encoding='utf-8') as f:
-                json.dump(audio_json, f, ensure_ascii=False)                
-            logger.info("生成音频json成功")
-                
-            # 下载成功，跳出循环
-            break
-            
         except requests.exceptions.RequestException as e:
             logger.error(f"请求错误: {str(e)}")
             time.sleep(delay)
@@ -400,8 +379,56 @@ def main(link: str, output_dir: Path, max_duration: int, dry_run: bool = False) 
         # 所有尝试都失败
         logger.error(f"在 {max_attempts} 次尝试后仍未能下载音频")
         return 'failed'
+
+def fetch_audio_link_from_line(line: str) -> tuple(str, str, Optional(dict)):
+   # 解析BV号
+    bvid = extract_bvid(line)
+    if not bvid:
+        logger.error(f"未能从 '{line}' 中解析到有效的BV号")
+        return 'failed', "", None
+
+    link = f"https://www.bilibili.com/video/{bvid}"
+    logger.info(f"解析到BV号: {bvid}, 构造请求链接: {link}")
+
+    # 获取视频信息
+    max_attempts = 10
+    delay = 5
+    return fetch_video_info(link, max_attempts, delay)
+
+def download_audio_from_line(link: str, output_dir: Path, max_duration: int) -> str:
+    """下载B站视频的音频
+    
+    Args:
+        link: B站视频链接或BV号
+        output_dir: 输出目录
+        max_duration: 最大下载时长（秒），可选
         
-    return 'ok'
+    Returns:
+        状态码: 'ok' 表示成功，'excluded' 表示视频不可下载
+    """
+    # 获取视频信息
+    max_attempts = 10
+    delay = 5
+    status, audio_link, audio_json = fetch_audio_link_from_line(link, max_attempts, delay)
+    
+    if status == 'ok':
+        logger.info(f"成功获取视频信息: {audio_link}")
+                            
+        # 设置输出文件名
+        output_filename = output_dir / "audio.mp3"
+
+        # 下载音频
+        status = download_audio(audio_link, output_filename)
+            
+        if status == 'ok':
+            with open(output_filename.with_suffix('.json'), 'w', encoding='utf-8') as f:
+                json.dump(audio_json, f, ensure_ascii=False)                
+            logger.info("生成音频json成功")
+                
+            # 下载成功，跳出循环
+            break
+            
+    return status
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="下载B站视频的音频")
@@ -422,16 +449,13 @@ if __name__ == "__main__":
     output_path = Path(args.output)
     
     try:
-        result = main(args.link, output_path, args.max_duration, args.dry_run)
+        result = download_audio_from_line(args.link, output_path)
         if result == 'ok':
             logger.info(f"下载完成，文件保存在: {output_path.absolute()}")
             sys.exit(0)
         elif result == 'excluded':
             logger.error("该视频为充电专属，无法下载")
             sys.exit(2)
-        elif result == 'duration':
-            logger.error("该视频超出长度，不下载")
-            sys.exit(3)
         else:
             logger.error("下载失败")
             sys.exit(1)
