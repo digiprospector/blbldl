@@ -233,7 +233,7 @@ def get_media_info(bv_json: Dict[str, Any]) -> Dict[str, Any]:
         "is_flac": False
     }
 
-def main(link: str, output_dir: Path, max_duration: Optional[int]) -> str:
+def main(link: str, output_dir: Path, max_duration: int, dry_run: bool = False) -> (str, int):
     """下载B站视频的音频
     
     Args:
@@ -246,7 +246,6 @@ def main(link: str, output_dir: Path, max_duration: Optional[int]) -> str:
     """
     # 确保输出目录存在
     output_dir.mkdir(parents=True, exist_ok=True)
-    
     # 解析BV号
     BVID = None
     link = link.rstrip('/')
@@ -324,6 +323,9 @@ def main(link: str, output_dir: Path, max_duration: Optional[int]) -> str:
                 time.sleep(delay)
                 continue
             
+            if dry_run:
+                return "ok", media_info_json1.get("videoData").get("duration")
+
             if max_duration and media_info_json1.get("videoData").get("duration") and media_info_json1.get("videoData").get("duration") > max_duration:
                 logger.warning(f"视频时长超过 {max_duration} 秒，无法下载")
                 return "duration"
@@ -396,6 +398,7 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--output", type=str, default=".", help="输出目录 (默认: 当前目录)")
     parser.add_argument("-d", "--debug", action="store_true", help="启用调试日志")
     parser.add_argument("-m", "--max-duration", type=int, default=0, help="最大下载时长（秒）")
+    parser.add_argument("-r", "--dry-run", action="store_true", help="仅打印要下载的音频信息")
     
     args = parser.parse_args()
     
@@ -408,7 +411,7 @@ if __name__ == "__main__":
     output_path = Path(args.output)
     
     try:
-        result = main(args.link, output_path, args.max_duration)
+        result = main(args.link, output_path, args.max_duration, args.dry_run)
         if result == 'ok':
             logger.info(f"下载完成，文件保存在: {output_path.absolute()}")
             sys.exit(0)
