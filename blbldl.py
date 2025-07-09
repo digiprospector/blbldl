@@ -324,7 +324,6 @@ def fetch_video_info(link, max_attempts=10, delay=5):
                     "title":media_info_meta.get('videoData').get('title'),
                     "owner":media_info_meta.get('videoData').get('owner').get('name'),
                     "datetime":media_info_meta.get('videoData').get('ctime'),
-                    "bvid":bvid,
                     "duration":media_info_meta.get("videoData").get("duration")}
 
                 return "ok", audio_link, audio_json
@@ -343,6 +342,38 @@ def download_audio(audio_link, output_filename: Path, max_attempts=10, delay=5) 
     for attempt in range(max_attempts):
         try:
             logger.info(f"开始下载音频: {audio_link}")
+
+            s = requests.Session()
+            
+            # 设置请求头
+            headers = {
+                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                "accept-language": "zh-CN,zh;q=0.9,ja;q=0.8,en;q=0.7",
+                "cache-control": "max-age=0",
+                "priority": "u=0, i",
+                "referer": "https://www.bilibili.com/?spm_id_from=333.788.0.0",
+                "sec-ch-ua": "\"Chromium\";v=\"136\", \"Google Chrome\";v=\"136\", \"Not.A/Brand\";v=\"99\"",
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": "\"Windows\"",
+                "sec-fetch-dest": "document",
+                "sec-fetch-mode": "navigate",
+                "sec-fetch-site": "same-origin",
+                "sec-fetch-user": "?1",
+                "upgrade-insecure-requests": "1",
+                "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+            }
+            
+            # 使用随机用户代理
+            ua = UserAgent().random
+            headers.update({
+                "user-agent": ua,
+                "sec-ch-ua": get_sec_ch_ua(ua),
+                "sec-ch-ua-platform": f"\"{get_platform(ua)}\"",
+                "sec-ch-ua-mobile": get_sec_ch_ua_mobile(ua),
+            })
+            logger.debug(f"使用随机用户代理: {ua}")
+                
+            s.headers = headers
 
             r = s.get(audio_link, stream=True, timeout=60)
             r.raise_for_status()
@@ -367,6 +398,7 @@ def download_audio(audio_link, output_filename: Path, max_attempts=10, delay=5) 
                         bar.update(len(chunk))
             
             logger.info("音频下载成功")
+            return "ok"
         except requests.exceptions.RequestException as e:
             logger.error(f"请求错误: {str(e)}")
             time.sleep(delay)
@@ -380,7 +412,7 @@ def download_audio(audio_link, output_filename: Path, max_attempts=10, delay=5) 
         logger.error(f"在 {max_attempts} 次尝试后仍未能下载音频")
         return 'failed'
 
-def fetch_audio_link_from_line(line: str) -> tuple(str, str, Optional(dict)):
+def fetch_audio_link_from_line(line: str, max_attempts=10, delay=5) -> tuple[str, str, dict]:
    # 解析BV号
     bvid = extract_bvid(line)
     if not bvid:
@@ -391,11 +423,32 @@ def fetch_audio_link_from_line(line: str) -> tuple(str, str, Optional(dict)):
     logger.info(f"解析到BV号: {bvid}, 构造请求链接: {link}")
 
     # 获取视频信息
-    max_attempts = 10
-    delay = 5
-    return fetch_video_info(link, max_attempts, delay)
+    status, audio_link, audio_json = fetch_video_info(link, max_attempts, delay)
+    if status == 'ok':
+        audio_json['bvid'] = bvid
+    return status, audio_link, audio_json
 
-def download_audio_from_line(link: str, output_dir: Path, max_duration: int) -> str:
+def download_audio_and_create_json(audio_link: str, audio_json: dict, output_filename: Path, max_attempts: int = 10, delay: int = 5) -> str:
+    """下载B站视频的音频
+    
+    Args:
+        link: B站视频链接或BV号
+        output_dir: 输出目录
+        max_duration: 最大下载时长（秒），可选
+        
+    Returns:
+        状态码: 'ok' 表示成功，'excluded' 表示视频不可下载
+    """
+    status = download_audio(audio_link, output_filename)
+        
+    if status == 'ok':
+        with open(output_filename.with_suffix('.json'), 'w', encoding='utf-8') as f:
+            json.dump(audio_json, f, ensure_ascii=False)                
+        logger.info("生成音频json成功")
+
+    return status
+
+def download_audio_from_line(link: str, output_dir: Path) -> str:
     """下载B站视频的音频
     
     Args:
@@ -418,16 +471,8 @@ def download_audio_from_line(link: str, output_dir: Path, max_duration: int) -> 
         output_filename = output_dir / "audio.mp3"
 
         # 下载音频
-        status = download_audio(audio_link, output_filename)
-            
-        if status == 'ok':
-            with open(output_filename.with_suffix('.json'), 'w', encoding='utf-8') as f:
-                json.dump(audio_json, f, ensure_ascii=False)                
-            logger.info("生成音频json成功")
-                
-            # 下载成功，跳出循环
-            break
-            
+        status = download_audio_and_create_json(audio_link, audio_json, output_filename)
+                            
     return status
 
 if __name__ == "__main__":
