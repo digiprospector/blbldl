@@ -363,11 +363,17 @@ def fetch_video_info(link, max_attempts=10, delay=5):
     return "failed", "", None
 
 def download_audio(audio_link, output_filename: Path, max_attempts=10, delay=5) -> str:
+    downloaded_size = 0
     for attempt in range(max_attempts):
         try:
             logger.info(f"开始下载音频: {audio_link}")
 
             s = requests.Session()
+            # 检查本地文件是否已存在以及大小
+            if output_filename.exists():
+                downloaded_size = output_filename.stat().st_size
+            else:
+                downloaded_size = 0
             
             # 设置请求头
             headers = {
@@ -384,7 +390,8 @@ def download_audio(audio_link, output_filename: Path, max_attempts=10, delay=5) 
                 "sec-fetch-site": "same-origin",
                 "sec-fetch-user": "?1",
                 "upgrade-insecure-requests": "1",
-                "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+                "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+                "Range": f"bytes={downloaded_size}-"  # 设置断点续传的 Range
             }
             
             # 使用随机用户代理
@@ -415,6 +422,9 @@ def download_audio(audio_link, output_filename: Path, max_attempts=10, delay=5) 
                 unit='B',
                 unit_scale=True,
                 unit_divisor=1024,
+                initial=downloaded_size,  # 设置初始值
+                position=0,
+                leave=True
             ) as bar:
                 for chunk in r.iter_content(chunk_size=8192):
                     if chunk:  # 过滤掉保持连接活跃的空块
