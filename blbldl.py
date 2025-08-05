@@ -416,9 +416,9 @@ def download_audio(audio_link, output_filename: Path, max_attempts=10, delay=5) 
             output_filename.parent.mkdir(parents=True, exist_ok=True)
     
             # 使用tqdm显示下载进度
-            with open(output_filename, 'wb') as f, tqdm(
+            with open(output_filename, 'ab') as f, tqdm(
                 desc="下载音频",
-                total=total_size,
+                total=total_size + downloaded_size,
                 unit='B',
                 unit_scale=True,
                 unit_divisor=1024,
